@@ -6,7 +6,9 @@
   GET  /sdapi/v1/sd-models          -> 已加载模型列表
   GET  /sdapi/v1/options            -> 选项 (部分工具探测用)
 
-启动: 双击 start_sd_server.cmd (或 python local_sd_server.py)
+生命周期: FaceSwitch 应用启动时由 Electron 主进程自动拉起, 退出时自动停止,
+无需手动运行本脚本 (手动运行仍然可用, 但下次打开应用时会被接管重启)。
+端口: 默认 127.0.0.1:7860, 可用环境变量 FACESWITCH_SD_PORT 覆盖。
 模型: SDXL base 1.0 fp16, 存于 HF_HOME 缓存。
 """
 import base64
@@ -111,9 +113,16 @@ async def options():
 
 @app.get("/health")
 async def health():
-    return {"ready": _state["ready"], "error": _state["error"], "uptimeSec": round(time.time() - _state["started"])}
+    return {
+        "service": "faceswitch-sdxl",  # 标识: Electron 用它区分本服务与端口上的其他服务
+        "ready": _state["ready"],
+        "error": _state["error"],
+        "uptimeSec": round(time.time() - _state["started"]),
+    }
 
+
+SD_PORT = int(os.environ.get("FACESWITCH_SD_PORT", "7860"))
 
 if __name__ == "__main__":
-    print("[sd] starting on 127.0.0.1:7860 ...", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=7860, log_level="warning")
+    print(f"[sd] starting on 127.0.0.1:{SD_PORT} ...", flush=True)
+    uvicorn.run(app, host="127.0.0.1", port=SD_PORT, log_level="warning")

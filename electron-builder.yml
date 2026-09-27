@@ -15,6 +15,12 @@ extraResources:
     to: engine
   - from: models
     to: models
+  # 本地生图服务脚本 (由机器上的 venv Python 运行, torch 不打进包)
+  - from: engine/sd_server
+    to: sd_server
+    filter:
+      - '**/*'
+      - '!**/__pycache__/**'
 win:
   icon: build/icon.ico
   target:

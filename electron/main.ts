@@ -7,7 +7,7 @@ import {
   clipboard
 } from 'electron'
 import { join, dirname } from 'node:path'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { createServer } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { createWriteStream, mkdirSync, existsSync } from 'node:fs'
@@ -22,6 +22,13 @@ let mainWindow: BrowserWindow | null = null
 let engineProc: ChildProcess | null = null
 let engineInfo = { baseUrl: '', token: '' }
 let engineLog: ReturnType<typeof createWriteStream> | null = null
+
+// ---- 本地 SDXL 生图服务 (sidecar): 随应用启停 ----
+const SD_PORT = Number.parseInt(process.env.FACESWITCH_SD_PORT || '', 10) || 7860
+const SD_HEALTH_URL = `http://127.0.0.1:${SD_PORT}/health`
+const SD_HEALTH_MARKER = 'faceswitch-sdxl'
+let sdProc: ChildProcess | null = null
+let sdLog: ReturnType<typeof createWriteStream> | null = null
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -115,6 +122,177 @@ function killEngine() {
   engineProc = null
 }
 
+// ---- 本地 SDXL 生图服务管理 ----
+
+function sdLogPath(): string {
+  const dir = isDev
+    ? join(PROJECT_ROOT, 'logs')
+    : join(app.getPath('userData'), 'logs')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  return join(dir, 'sd_server.log')
+}
+
+function sdNote(msg: string) {
+  if (!sdLog) sdLog = createWriteStream(sdLogPath(), { flags: 'a' })
+  sdLog.write(`${msg}\n`)
+}
+
+function resolveSdPython(): string | null {
+  // 生图服务依赖 torch+diffusers, 不打进 engine.exe (打包版刻意排除 torch 减重),
+  // 因此用机器上的 venv Python 运行随包分发的服务脚本。
+  const candidates = [
+    process.env.FACESWITCH_SD_PYTHON, // 显式指定: 含 torch+diffusers 的 python.exe
+    isDev
+      ? join(PROJECT_ROOT, 'engine', '.venv', 'Scripts', 'python.exe')
+      : join(process.resourcesPath!, '..', '..', '..', 'engine', '.venv', 'Scripts', 'python.exe'), // 仓库树内打包 (开发机)
+    join(process.resourcesPath!, 'python', 'Scripts', 'python.exe') // 预留: 随包分发的 venv
+  ]
+  for (const py of candidates) {
+    if (py && existsSync(py)) return py
+  }
+  return null
+}
+
+function resolveSdScript(): string {
+  return isDev
+    ? join(PROJECT_ROOT, 'engine', 'sd_server', 'local_sd_server.py')
+    : join(process.resourcesPath!, 'sd_server', 'local_sd_server.py')
+}
+
+function findSdPids(): Promise<string[]> {
+  // wmic 输出是 UTF-16, 重定向下带 \0 分隔, 先去掉再解析。
+  // 只认 python.exe: LIKE 模式会同时匹配查询进程自身等无关命令行。
+  return new Promise((resolve) => {
+    execFile(
+      'wmic',
+      ['process', 'where', "CommandLine Like '%local_sd_server%'", 'get', 'Name,ProcessId', '/format:value'],
+      { windowsHide: true, timeout: 8000, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout) => {
+        if (err) return resolve([])
+        const text = String(stdout).replace(/\0/g, '')
+        const pids: string[] = []
+        let name = ''
+        for (const line of text.split(/\r?\n/)) {
+          const eq = line.indexOf('=')
+          if (eq < 0) continue
+          const key = line.slice(0, eq).trim()
+          const val = line.slice(eq + 1).trim()
+          if (key === 'Name') name = val.toLowerCase()
+          else if (key === 'ProcessId' && name === 'python.exe') pids.push(val)
+        }
+        resolve(pids)
+      }
+    )
+  })
+}
+
+async function waitSdHealthy(timeoutMs = 20000): Promise<boolean> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const res = await fetch(SD_HEALTH_URL, { signal: AbortSignal.timeout(1500) })
+      if (res.ok) return true
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  return false
+}
+
+// 返回 'free' 可以拉起; 'foreign' 表示端口被别的服务占用, 不要动它
+async function reclaimSdPort(): Promise<'free' | 'foreign'> {
+  let marker: string | undefined
+  try {
+    const res = await fetch(SD_HEALTH_URL, { signal: AbortSignal.timeout(1500) })
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { service?: string }
+      marker = data.service
+    }
+  } catch {
+    return 'free' // 端口空闲 (或被非 HTTP 程序占用, 拉起失败会留日志)
+  }
+
+  // 端口上有服务应答: 命令行含 local_sd_server 的就是我们自己的实例
+  // (上次异常退出的残留, 或旧版/手动启动的), 一律接管清理后重新拉起
+  const pids = await findSdPids()
+  if (pids.length === 0) {
+    if (marker === SD_HEALTH_MARKER) {
+      sdNote('[sd] 发现残留实例但无法定位 PID, 跳过本次拉起 (现有实例继续服务)')
+    } else {
+      sdNote(`[sd] 端口 ${SD_PORT} 已被其他服务占用, 跳过本地生图服务拉起`)
+    }
+    return 'foreign'
+  }
+  sdNote(`[sd] 清理残留的本地生图服务实例 (pid: ${pids.join(', ')})...`)
+  for (const pid of pids) {
+    spawn('taskkill', ['/PID', pid, '/T', '/F'], { windowsHide: true })
+  }
+  const started = Date.now()
+  while (Date.now() - started < 8000) {
+    try {
+      await fetch(SD_HEALTH_URL, { signal: AbortSignal.timeout(1000) })
+    } catch {
+      return 'free'
+    }
+    await new Promise((r) => setTimeout(r, 300))
+  }
+  return 'foreign'
+}
+
+function spawnSdServer(): void {
+  const py = resolveSdPython()
+  const script = resolveSdScript()
+  if (!py || !existsSync(script)) {
+    sdNote(
+      `[sd] 未找到 Python 环境 (${py ?? '无'}) 或服务脚本 (${script}), 本地生图服务未启动。\n` +
+        `[sd] 可设置环境变量 FACESWITCH_SD_PYTHON 指向含 torch+diffusers 的 python.exe`
+    )
+    return
+  }
+
+  sdNote(`\n===== sd server start ${new Date().toISOString()} py=${py} =====`)
+  const proc = spawn(py, [script], {
+    cwd: dirname(script),
+    env: {
+      ...process.env,
+      FACESWITCH_SD_PORT: String(SD_PORT)
+    },
+    windowsHide: true
+  })
+  sdProc = proc
+  proc.stdout?.on('data', (d) => sdLog?.write(d))
+  proc.stderr?.on('data', (d) => sdLog?.write(d))
+  proc.on('error', (err) => {
+    sdNote(`[sd] spawn 失败: ${err}`)
+    if (sdProc === proc) sdProc = null
+  })
+  proc.on('exit', (code) => {
+    sdNote(`[sd] sd server exit code=${code}`)
+    if (sdProc === proc) sdProc = null
+  })
+}
+
+async function startSdService(): Promise<void> {
+  const state = await reclaimSdPort()
+  if (state === 'foreign') return
+  spawnSdServer()
+  const ok = await waitSdHealthy()
+  if (ok) {
+    sdNote(`[sd] 本地生图服务就绪: ${SD_HEALTH_URL}`)
+  } else {
+    sdNote(`[sd] 生图服务未在 20s 内就绪, 详情见日志: ${sdLogPath()}`)
+  }
+}
+
+function killSdServer() {
+  if (!sdProc || sdProc.pid === undefined) return
+  spawn('taskkill', ['/PID', String(sdProc.pid), '/T', '/F'], {
+    windowsHide: true
+  })
+  sdProc = null
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -177,6 +355,18 @@ function registerIpc() {
   ipcMain.handle('shell:showInFolder', (_e, path: string) => shell.showItemInFolder(path))
 }
 
+// 单实例: 二次启动直接聚焦已有窗口, 也避免重复拉起引擎/生图服务
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.whenReady().then(async () => {
   registerIpc()
 
@@ -196,6 +386,9 @@ app.whenReady().then(async () => {
     return
   }
 
+  // 引擎就绪后拉起本地生图服务; 只等它自己的健康检查打日志, 不阻塞窗口
+  startSdService().catch((err) => sdNote(`[sd] 启动流程异常: ${err}`))
+
   createWindow()
 
   app.on('activate', () => {
@@ -205,9 +398,11 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   killEngine()
+  killSdServer()
   app.quit()
 })
 
 app.on('before-quit', () => {
   killEngine()
+  killSdServer()
 })
