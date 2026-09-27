@@ -11,7 +11,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .config import load_settings
+from .config import load_settings, resolve_model
 from .downloads import MODEL_MANIFEST
 from .media import CRF_BY_QUALITY, encode_frames, extract_audio, ffmpeg_exe
 from .models.arcface import FaceRecognizer
@@ -77,9 +77,8 @@ class MattingStage(Stage):
 
     def setup(self) -> None:
         settings = load_settings()
-        models_dir = settings["modelsDir"]
         self.ctx.rvm = VideoMatting(
-            str(Path(models_dir) / "rvm_mobilenetv3_fp16.onnx"), settings["device"]
+            str(resolve_model("rvm_mobilenetv3_fp16.onnx", settings)), settings["device"]
         )
 
     def process(self, frame: np.ndarray, index: int) -> np.ndarray:
@@ -240,15 +239,18 @@ class FaceSwapStage(Stage):
         if not self.enabled:
             return
         settings = load_settings()
-        models_dir = Path(settings["modelsDir"])
         device = settings["device"]
 
-        self.detector = FaceDetector(str(models_dir / "scrfd_2.5g.onnx"), device)
-        self.recognizer = FaceRecognizer(str(models_dir / "arcface_w600k_r50.onnx"), device)
-        self.swapper = FaceSwapper(str(models_dir / "inswapper_128.onnx"), device)
+        self.detector = FaceDetector(str(resolve_model("scrfd_2.5g.onnx", settings)), device)
+        self.recognizer = FaceRecognizer(
+            str(resolve_model("arcface_w600k_r50.onnx", settings)), device
+        )
+        self.swapper = FaceSwapper(str(resolve_model("inswapper_128.onnx", settings)), device)
         restore = int(cfg.get("restoreStrength", 0))
         self.restorer = (
-            FaceRestorer(str(models_dir / "gfpgan_1.4.onnx"), device) if restore > 0 else None
+            FaceRestorer(str(resolve_model("gfpgan_1.4.onnx", settings)), device)
+            if restore > 0
+            else None
         )
         self.restore_alpha = restore / 100.0
 

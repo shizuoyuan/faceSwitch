@@ -4,7 +4,7 @@ from pathlib import Path
 
 import httpx
 
-from .config import hf_mirror
+from .config import hf_mirror, writable_models_dir
 
 FACEFUSION = f"{hf_mirror()}/facefusion/models-3.0.0/resolve/main"
 RVM_REPO = f"{hf_mirror()}/inverseaibd/rvm_mobilenetv3_fp16/resolve/main"
@@ -19,6 +19,10 @@ MODEL_MANIFEST: dict[str, str] = {
 
 _progress: dict[str, dict] = {}
 _lock = threading.Lock()
+
+
+def target_dir() -> str:
+    return str(writable_models_dir())
 
 
 def status(models_dir: str) -> dict[str, bool]:

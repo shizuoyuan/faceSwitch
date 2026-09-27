@@ -15,13 +15,13 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from . import downloads
-from .config import load_settings, save_settings
+from .config import DATA_DIR, load_settings, save_settings
 from .media import probe
 from .pipeline import Job
 
 app = FastAPI(title="FaceSwitch Engine", docs_url=None, redoc_url=None)
 
-JOBS_ROOT = Path(__file__).resolve().parent / "data" / "jobs"
+JOBS_ROOT = DATA_DIR / "jobs"
 JOBS_ROOT.mkdir(parents=True, exist_ok=True)
 
 _jobs: dict[str, Job] = {}
@@ -145,7 +145,7 @@ class SettingsModel(BaseModel):
 async def get_settings():
     s = load_settings()
     if not s.get("outputDir"):
-        s["outputDir"] = str(Path(s["modelsDir"]).parent / "output")
+        s["outputDir"] = str(DATA_DIR.parent / "output")
     return s
 
 
@@ -165,8 +165,7 @@ async def models_status():
 
 @app.post("/api/models/download", dependencies=[Depends(auth)])
 async def models_download():
-    settings = load_settings()
-    downloads.download_all(settings["modelsDir"])
+    downloads.download_all(str(downloads.target_dir()))
     return {"ok": True}
 
 

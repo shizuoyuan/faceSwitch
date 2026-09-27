@@ -36,7 +36,9 @@ function findFreePort(): Promise<number> {
 }
 
 function engineLogPath(): string {
-  const dir = join(PROJECT_ROOT, 'logs')
+  const dir = isDev
+    ? join(PROJECT_ROOT, 'logs')
+    : join(app.getPath('userData'), 'logs')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return join(dir, 'engine.log')
 }

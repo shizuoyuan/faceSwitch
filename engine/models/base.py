@@ -1,5 +1,6 @@
 """ONNX 会话管理与通用工具。"""
 import os
+import sys
 from pathlib import Path
 
 import cv2
@@ -7,23 +8,31 @@ import numpy as np
 
 
 def _add_dll_dirs() -> None:
-    """Windows 上让 onnxruntime 找到 torch 自带的 cudnn/cublas DLL。
+    """Windows 上让 onnxruntime 找到 cudnn/cublas DLL。
 
+    开发模式借 torch/lib; 打包模式从 _internal/dlls 取。
     ort 加载 provider 依赖时走 PATH 搜索, 因此同时改 add_dll_directory 与 PATH。
     """
     import site
 
     dirs: list[str] = []
-    for sp in site.getsitepackages():
-        torch_lib = Path(sp) / "torch" / "lib"
-        if torch_lib.exists():
-            dirs.append(str(torch_lib))
-        nvidia = Path(sp) / "nvidia"
-        if nvidia.exists():
-            for sub in nvidia.iterdir():
-                bin_dir = sub / "bin"
-                if bin_dir.exists():
-                    dirs.append(str(bin_dir))
+    if getattr(sys, "frozen", False):
+        meipass = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        for sub in ("dlls", "onnxruntime/capi"):
+            p = meipass / sub
+            if p.exists():
+                dirs.append(str(p))
+    else:
+        for sp in site.getsitepackages():
+            torch_lib = Path(sp) / "torch" / "lib"
+            if torch_lib.exists():
+                dirs.append(str(torch_lib))
+            nvidia = Path(sp) / "nvidia"
+            if nvidia.exists():
+                for sub in nvidia.iterdir():
+                    bin_dir = sub / "bin"
+                    if bin_dir.exists():
+                        dirs.append(str(bin_dir))
     for d in dirs:
         try:
             os.add_dll_directory(d)

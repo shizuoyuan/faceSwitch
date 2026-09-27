@@ -1,0 +1,22 @@
+appId: com.faceswitch.app
+productName: FaceSwitch
+artifactName: FaceSwitch-${version}-win.${ext}
+directories:
+  output: release2
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - '!node_modules/**'
+asar: true
+extraResources:
+  - from: engine/dist/engine
+    to: engine
+  - from: models
+    to: models
+win:
+  icon: build/icon.ico
+  target:
+    - target: zip
+      arch:
+        - x64

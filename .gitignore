@@ -1,6 +1,7 @@
 node_modules/
 out/
 dist/
+release/
 engine/.venv/
 engine/build/
 engine/dist/
