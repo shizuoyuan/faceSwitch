@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+engine/.venv/
+engine/build/
+engine/dist/
+__pycache__/
+*.pyc
+models/*.onnx
+models/*.pth
+models/*.torchscript
+models/*.bin
+jobs/
+*.log
+.DS_Store
