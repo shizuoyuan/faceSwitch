@@ -12,6 +12,7 @@ models/*.pth
 models/*.torchscript
 models/*.bin
 jobs/
+engine/data/
 *.log
 .DS_Store
 release2/
