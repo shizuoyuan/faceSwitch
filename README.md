@@ -21,6 +21,20 @@
 npm run dev
 ```
 
+## 打包发布
+
+```bash
+npm run build:engine   # 增量 PyInstaller 打包 Python 引擎 (源码未变化时秒级跳过)
+npm run pack:dir       # 快速验证: 只产出 release/win-unpacked, 不打 NSIS 安装包
+npm run package        # 完整发布: build:engine → electron-vite build → NSIS 安装包
+```
+
+说明:
+
+- 引擎产出在 `engine/dist/engine/`(engine.exe + `_internal/`,约 2.5GB,含 CUDA/cuDNN DLL);`_internal/dlls` 必须包含 cudart/cublas/cudnn/**cufft**,缺一个 onnxruntime CUDA provider 都会加载失败并静默回退 CPU。
+- 若引擎源码与 `engine.spec` 自上次构建后未变,`build:engine` 会直接复用 `engine/dist/engine`。
+- **首次构建较慢**(PyInstaller 对 5GB venv 做全量分析,可能 1 小时以上),之后 Analysis 有缓存。若文件操作异常慢(复制 ~1MB/s),把项目目录和 `engine\.venv` 加入杀毒软件(Windows Defender / 360 等)的扫描排除列表。
+
 ## 模型清单(自动下载)
 
 | 模型 | 用途 |

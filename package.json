@@ -10,7 +10,9 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
-    "package": "electron-vite build && electron-builder --win"
+    "build:engine": "engine\\.venv\\Scripts\\python.exe scripts\\build_engine.py",
+    "pack:dir": "electron-vite build && electron-builder --win --dir",
+    "package": "npm run build:engine && electron-vite build && electron-builder --win"
   },
   "dependencies": {
     "react": "^18.3.1",

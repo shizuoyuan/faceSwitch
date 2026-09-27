@@ -3,6 +3,9 @@
 
 产出 engine/dist/engine/ (engine.exe + _internal/)。
 CUDA DLL 从 torch/lib 收集到 _internal/dlls, 运行时由 engine.models.base._add_dll_dirs 注入。
+
+注意: onnxruntime_providers_cuda.dll 静态导入 cublas/cublasLt/cudart/cudnn/cufft,
+缺任何一个 provider 都会加载失败并静默回退 CPU, glob 必须覆盖全部静态依赖。
 """
 import glob
 import os
@@ -10,7 +13,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 torch_lib = os.path.join("engine", ".venv", "Lib", "site-packages", "torch", "lib")
 cuda_dlls = []
-for pat in ("cudart64*.dll", "cublas*.dll", "cudnn*.dll"):
+for pat in ("cudart64*.dll", "cublas*.dll", "cudnn*.dll", "cufft64*.dll"):
     cuda_dlls += sorted(glob.glob(os.path.join(torch_lib, pat)))
 
 a = Analysis(
@@ -34,6 +37,10 @@ a = Analysis(
     ],
     noarchive=False,
 )
+
+# 二进制依赖分析会顺着上面显式收集的 CUDA DLL, 把 torch/lib 里的同名文件
+# 再以 torch\lib\ 路径重复收一遍 (约 747MB); _internal/dlls 已有同名副本, 过滤掉。
+a.binaries = [b for b in a.binaries if not b[0].replace("\\", "/").startswith("torch/")]
 
 pyz = PYZ(a.pure)
 

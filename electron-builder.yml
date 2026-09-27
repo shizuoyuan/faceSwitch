@@ -2,7 +2,8 @@ appId: com.faceswitch.app
 productName: FaceSwitch
 artifactName: FaceSwitch-${version}-win.${ext}
 directories:
-  output: release2
+  # C 盘项目树内有内核过滤驱动(ahflt)抢锁新写文件, 打包输出必须放 D 盘
+  output: D:/FaceSwitch-release
   buildResources: build
 files:
   - out/**
