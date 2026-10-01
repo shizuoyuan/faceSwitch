@@ -4,7 +4,7 @@ import numpy as np
 
 
 class VideoMatting:
-    """逐帧推理;内部维护循环隐状态。输出 alpha (H,W) float32 与前景 BGR。"""
+    """逐帧推理;内部维护循环隐状态。输出 alpha (H,W) uint8 0..255 与前景 BGR。"""
 
     def __init__(self, model_path: str, device: str = "gpu", max_side: int = 1280):
         from .base import create_session, session_device
@@ -38,7 +38,7 @@ class VideoMatting:
         return src, scale, h, w
 
     def process_frame(self, frame_bgr: np.ndarray, downsample_ratio: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """返回 (alpha float32 HxW 0..1 [原图尺寸], fgr_bgr uint8 [处理尺寸], 处理图)。"""
+        """返回 (alpha uint8 HxW 0..255 [原图尺寸, 比 float32 省 4 倍带宽], fgr_bgr uint8 [处理尺寸], 处理图)。"""
         src, scale, oh, ow = self._prep(frame_bgr)
         dtype = np.float16 if self.is_fp16 else np.float32
         if not self._states:
@@ -60,11 +60,11 @@ class VideoMatting:
         for n in self.state_in:
             self._states[n] = named[n.replace("i", "o", 1)]
 
-        pha = pha[0, 0].astype(np.float32)
+        pha8 = (pha[0, 0].clip(0, 1) * 255.0).round().astype(np.uint8)
         fgr_bgr = cv2.cvtColor(
             (fgr[0].transpose(1, 2, 0).clip(0, 1) * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
         )
-        proc_h, proc_w = pha.shape
+        proc_h, proc_w = pha8.shape
         if (proc_h, proc_w) != (oh, ow) and scale != 1.0:
-            pha = cv2.resize(pha, (ow, oh), interpolation=cv2.INTER_LINEAR)
-        return pha, fgr_bgr, (proc_h, proc_w)
+            pha8 = cv2.resize(pha8, (ow, oh), interpolation=cv2.INTER_LINEAR)
+        return pha8, fgr_bgr, (proc_h, proc_w)

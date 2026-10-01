@@ -10,10 +10,14 @@ export interface ProbeResult {
   thumbnail: string // data URL (jpeg)
 }
 
+export type PasteRegion = 'full' | 'keep-eyes' | 'mid-face'
+
 export interface FaceSwapConfig {
   enabled: boolean
   sourceImages: string[]
   restoreStrength: number // 0-100, GFPGAN 修复混合强度
+  pasteRegion: PasteRegion // 贴回范围: 全脸 / 保留眼睛 / 仅中脸
+  faceColorMatch: boolean // 生成脸颜色对齐原脸
 }
 
 export type BackgroundMode = 'keep' | 'image' | 'video' | 'ai'
@@ -55,6 +59,7 @@ export interface JobStatus {
   outputPath?: string
   error?: string
   elapsedSec?: number
+  stageTimingsSec?: Record<string, number>
 }
 
 export type ProviderType = 'custom' | 'sd-webui' | 'openai-images'

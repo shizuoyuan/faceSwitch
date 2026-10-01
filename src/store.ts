@@ -33,7 +33,9 @@ interface AppState {
 const initialFaceSwap: FaceSwapConfig = {
   enabled: true,
   sourceImages: [],
-  restoreStrength: 60
+  restoreStrength: 60,
+  pasteRegion: 'keep-eyes',
+  faceColorMatch: true
 }
 
 const initialBackground: BackgroundConfig = {

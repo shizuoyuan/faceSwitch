@@ -14,6 +14,7 @@ MODEL_MANIFEST: dict[str, str] = {
     "arcface_w600k_r50.onnx": f"{FACEFUSION}/arcface_w600k_r50.onnx",
     "inswapper_128.onnx": f"{FACEFUSION}/inswapper_128.onnx",
     "gfpgan_1.4.onnx": f"{FACEFUSION}/gfpgan_1.4.onnx",
+    "bisenet_resnet_34.onnx": f"{FACEFUSION}/bisenet_resnet_34.onnx",
     "rvm_mobilenetv3_fp16.onnx": f"{RVM_REPO}/rvm_mobilenetv3_fp16.onnx",
 }
 

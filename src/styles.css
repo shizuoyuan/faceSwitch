@@ -577,6 +577,19 @@ button {
   50% { opacity: 0.4; }
 }
 
+.stage-timings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.stage-timing {
+  white-space: nowrap;
+}
+
 /* ===== 导出页 ===== */
 .export-page {
   max-width: 900px;

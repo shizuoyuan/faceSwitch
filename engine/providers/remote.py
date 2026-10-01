@@ -7,6 +7,7 @@ responseType: base64(data URI 或裸 base64) 或 url(再下载)。
 import base64
 import json
 import re
+import time
 
 import cv2
 import httpx
@@ -64,13 +65,28 @@ def call_provider(provider: dict, prompt: str, width: int, height: int,
 
     method = (provider.get("method") or "POST").upper()
     timeout = httpx.Timeout(300.0, connect=15.0)
-    try:
+
+    def send() -> httpx.Response:
         if method == "GET":
-            resp = httpx.get(url, headers=headers, params=body, timeout=timeout)
-        else:
-            resp = httpx.post(url, headers=headers, json=body, timeout=timeout)
-    except httpx.HTTPError as e:
-        raise ProviderError(f"请求失败: {e}")
+            return httpx.get(url, headers=headers, params=body, timeout=timeout)
+        return httpx.post(url, headers=headers, json=body, timeout=timeout)
+
+    # 连接被拒: 本地生图服务可能正被应用拉起, 短暂重试 (~12s) 再放弃
+    resp: httpx.Response | None = None
+    last_connect_err: Exception | None = None
+    for _ in range(4):
+        try:
+            resp = send()
+            break
+        except httpx.ConnectError as e:
+            last_connect_err = e
+            time.sleep(3)
+    if resp is None:
+        raise ProviderError(
+            f"无法连接 AI 服务 {url}: {last_connect_err}。"
+            "若使用本地 SDXL 生图服务, 它由应用启动时自动拉起 (约需几秒), 请稍候重试;"
+            "若持续失败请查看应用日志 sd_server.log"
+        ) from last_connect_err
 
     if resp.status_code >= 400:
         raise ProviderError(f"服务返回 {resp.status_code}: {resp.text[:300]}")

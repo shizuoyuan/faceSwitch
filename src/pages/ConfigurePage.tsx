@@ -18,6 +18,12 @@ const BG_MODES = [
   { key: 'ai', label: 'AI 生成背景', desc: '调用配置的 AI 服务生成背景' }
 ] as const
 
+const PASTE_REGIONS = [
+  { key: 'full', label: '全脸', desc: '完整换脸,相似度优先' },
+  { key: 'keep-eyes', label: '保留眼睛', desc: '眼镜/眼睛不换,和谐度优先(推荐)' },
+  { key: 'mid-face', label: '仅中脸', desc: '只换皮肤鼻嘴,最保守' }
+] as const
+
 export function ConfigurePage() {
   const probe = useApp((s) => s.probe)
   const faceSwap = useApp((s) => s.faceSwap)
@@ -102,6 +108,29 @@ export function ConfigurePage() {
                 onChange={(e) => setFaceSwap({ restoreStrength: Number(e.target.value) })}
                 style={{ width: '100%' }}
               />
+
+              <label className="label">贴回范围(原视频人物戴眼镜/饰品建议保留眼睛)</label>
+              <div className="bg-modes">
+                {PASTE_REGIONS.map((m) => (
+                  <button
+                    key={m.key}
+                    className={`bg-mode ${faceSwap.pasteRegion === m.key ? 'selected' : ''}`}
+                    onClick={() => setFaceSwap({ pasteRegion: m.key })}
+                  >
+                    <b>{m.label}</b>
+                    <span>{m.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={faceSwap.faceColorMatch}
+                  onChange={(e) => setFaceSwap({ faceColorMatch: e.target.checked })}
+                />
+                <span>换脸颜色匹配(生成脸对齐原脸肤色光照,推荐开启)</span>
+              </label>
             </>
           )}
         </section>

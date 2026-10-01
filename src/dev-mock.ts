@@ -30,7 +30,7 @@ export function installBrowserMock() {
   // mock probe 数据
   const origFetch = window.fetch.bind(window)
   window.fetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input.url
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     if (url.includes('/api/probe')) {
       return new Response(
         JSON.stringify({

@@ -42,7 +42,21 @@ def _add_dll_dirs() -> None:
         os.environ["PATH"] = os.pathsep.join(dirs) + os.pathsep + os.environ.get("PATH", "")
 
 
+_dll_dirs_done = False
+
+
+def _ensure_dll_dirs() -> None:
+    """进程内只注入一次 CUDA DLL 搜索路径 (必须发生在首个 InferenceSession 之前,
+    否则 CUDA provider 加载 cublasLt64_12.dll 失败并静默回退 CPU)。"""
+    global _dll_dirs_done
+    if _dll_dirs_done:
+        return
+    _dll_dirs_done = True
+    _add_dll_dirs()
+
+
 def create_session(model_path: str, device: str = "gpu") -> "ort.InferenceSession":
+    _ensure_dll_dirs()
     import onnxruntime as ort
 
     model_path = str(model_path)

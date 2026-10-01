@@ -7,12 +7,24 @@ const STAGE_LABELS: Record<string, string> = {
   prepare: '准备与抽帧',
   matting: '人物抠像',
   background: '背景处理',
+  harmonize: '光照融合',
   faceswap: 'AI 换脸',
   compose: '合成与编码',
   done: '完成'
 }
 
-const STAGE_ORDER = ['prepare', 'matting', 'background', 'faceswap', 'compose', 'done']
+const STAGE_ORDER = ['prepare', 'matting', 'background', 'harmonize', 'faceswap', 'compose', 'done']
+
+const TIMING_LABELS: Record<string, string> = {
+  prepare: '准备',
+  decode: '解码',
+  matting: '抠像',
+  background: '背景',
+  harmonize: '融合',
+  faceswap: '换脸',
+  write: '写帧',
+  encode: '编码收尾'
+}
 
 export function ProcessPage() {
   const probe = useApp((s) => s.probe)
@@ -124,6 +136,15 @@ export function ProcessPage() {
           </div>
 
           {jobStatus?.message && <div className="hint">{jobStatus.message}</div>}
+          {jobStatus?.stageTimingsSec && Object.keys(jobStatus.stageTimingsSec).length > 0 && (
+            <div className="stage-timings">
+              {Object.entries(jobStatus.stageTimingsSec).map(([key, sec]) => (
+                <span key={key} className="stage-timing">
+                  {TIMING_LABELS[key] ?? key} {sec.toFixed(1)}s
+                </span>
+              ))}
+            </div>
+          )}
           {error && <div className="error-box">{error}</div>}
 
           <div className="wizard-actions">

@@ -142,11 +142,19 @@ function resolveSdPython(): string | null {
   // 因此用机器上的 venv Python 运行随包分发的服务脚本。
   const candidates = [
     process.env.FACESWITCH_SD_PYTHON, // 显式指定: 含 torch+diffusers 的 python.exe
-    isDev
-      ? join(PROJECT_ROOT, 'engine', '.venv', 'Scripts', 'python.exe')
-      : join(process.resourcesPath!, '..', '..', '..', 'engine', '.venv', 'Scripts', 'python.exe'), // 仓库树内打包 (开发机)
-    join(process.resourcesPath!, 'python', 'Scripts', 'python.exe') // 预留: 随包分发的 venv
+    join(process.resourcesPath!, 'python', 'Scripts', 'python.exe') // 随包分发的 venv (若打包时附带)
   ]
+  // 从 resources 逐级向上找仓库树内的 venv (覆盖 release2/、FaceSwitch-release/ 等打包位置)
+  let dir: string | undefined = process.resourcesPath
+  for (let i = 0; i < 5 && dir; i++) {
+    candidates.push(join(dir, 'engine', '.venv', 'Scripts', 'python.exe'))
+    const up = dirname(dir)
+    if (up === dir) break
+    dir = up
+  }
+  // 部署机已知 venv 位置的兜底 (通用部署请用 FACESWITCH_SD_PYTHON 或随包 venv)
+  candidates.push('D:\\face-switch\\engine\\.venv\\Scripts\\python.exe')
+  candidates.push('D:\\FaceSwitchDev\\engine\\.venv\\Scripts\\python.exe')
   for (const py of candidates) {
     if (py && existsSync(py)) return py
   }
@@ -370,6 +378,9 @@ if (!app.requestSingleInstanceLock()) {
 app.whenReady().then(async () => {
   registerIpc()
 
+  // 生图服务与引擎并行拉起, 越早可用; 若引擎失败退出, before-quit 会一并杀掉它
+  startSdService().catch((err) => sdNote(`[sd] 启动流程异常: ${err}`))
+
   const port = await findFreePort()
   const token = randomUUID()
   engineInfo = { baseUrl: `http://127.0.0.1:${port}`, token }
@@ -385,9 +396,6 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
-
-  // 引擎就绪后拉起本地生图服务; 只等它自己的健康检查打日志, 不阻塞窗口
-  startSdService().catch((err) => sdNote(`[sd] 启动流程异常: ${err}`))
 
   createWindow()
 
